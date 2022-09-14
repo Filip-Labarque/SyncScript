@@ -143,7 +143,7 @@ class ChangeProcessor {
         if (replica.customFields."Observed By"?.value && canBeSet("Observed By")) issue.customFields."Observed By"?.value = getExOption("Observed By", replica.customFields."Observed By"?.value?.value as String)
         if (replica.customFields."Observed During"?.value && canBeSet("Observed During")) issue.customFields."Observed During"?.value = getExOption("Observed During", replica.customFields."Observed During"?.value?.value as String)
         if (replica.customFields."Project Type"?.value && canBeSet("Project Type")) issue.customFields."Project Type"?.value = getExOption("Project Type", replica.customFields."Project Type"?.value?.value as String)
-        if (replica.customFields."Region"?.value && canBeSet("Region")) issue.customFields."Region"?.value = getExOption("Region", replica.customFields."Region"?.value?.value as String)
+        //if (replica.customFields."Region"?.value && canBeSet("Region")) issue.customFields."Region"?.value = getExOption("Region", replica.customFields."Region"?.value?.value as String)
         if (replica.customFields."Status Detail"?.value && canBeSet("Status Detail")) issue.customFields."Status Detail"?.value = getExOption("Status Detail", replica.customFields."Status Detail"?.value?.value as String)
         if (replica.customFields."Customer Support ID"?.value && canBeSet("Customer Support ID")) issue.customFields."Customer Support ID"?.value = replica.customFields."Customer Support ID"?.value
         if (replica.customFields."Serial Number"?.value && canBeSet("Serial Number")) issue.customFields."Serial Number"?.value = replica.customFields."Serial Number"?.value
