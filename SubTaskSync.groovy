@@ -7,7 +7,18 @@ class SubTaskSync {
     private static <T> T await(scala.concurrent.Future<T> f) { scala.concurrent.Await$.MODULE$.result(f, scala.concurrent.duration.Duration$.MODULE$.Inf()) }
     private static <T> List<T> toList(scala.collection.Seq<T> xs) { scala.collection.JavaConverters$.MODULE$.bufferAsJavaListConverter(xs.toBuffer()).asJava() as List }
     static def send(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, IConnection connection, PreparedHttpClient httpClient) {
-        final def nserv = InjectorGetter.getInjector().instanceOf(com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService.class)
+        /**
+         * Due to changes on Exalate's API from 5.3 to 5.4 we need to consider that ITrackerHubObjectService might be on
+         * different packages, so we will load the class dinamycally and catching an exception if Exalate is running
+         * 5.3 or lower version
+         */
+        def nserv
+        def classLoader = this.getClassLoader()
+        try {
+            nserv = InjectorGetter.getInjector().instanceOf(classLoader.loadClass("com.exalate.generic.services.api.ITrackerHubObjectService"))
+        } catch(ClassNotFoundException exception) {
+            nserv = InjectorGetter.getInjector().instanceOf(classLoader.loadClass("com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService"))
+        }
         def issueLevelError = { String msg ->
             new com.exalate.api.exception.IssueTrackerException(msg)
         }
@@ -49,7 +60,7 @@ class SubTaskSync {
             scala.collection.JavaConversions.bufferAsJavaList(resultSeq.toBuffer())
         }
         def getGeneralSettings = {
-            def gsp = InjectorGetter.getInjector().instanceOf(com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence.class)
+            def gsp = InjectorGetter.getInjector().instanceOf(com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsRepository.class)
             def gsOpt = await(gsp.get())
             def gs = orNull(gsOpt)
             gs
@@ -178,23 +189,5 @@ class SubTaskSync {
     }
 
     static def receiveAfterCreation(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, IConnection connection, NodeHelper nodeHelper) {
-//         if (replica.customKeys.subTaskContext?.children && !replica.customKeys.subTaskContext.children.empty) {
-//             final def injector = play.api.Play$.MODULE$.current().injector()
-//             def errorRepo = injector.instanceOf(com.exalate.api.persistence.error.IErrorRepository.class)
-//             def errorServ = injector.instanceOf(com.exalate.replication.services.api.error.IErrorService.class)
-//
-//             replica.customKeys.subTaskContext.children.each { Map<String, Object> remoteSubTask ->
-//                 def remoteSubTaskId = remoteSubTask.id
-//
-//                 def errors = toList(await(errorRepo.findAllBlockers(
-//                         scala.Option.empty(),
-//                         connection.ID ? scala.Some.apply(connection.ID) : scala.Option.empty(),
-//                         connection.remoteInstance?.ID ? scala.Some.apply(connection.remoteInstance?.ID) : scala.Option.empty(),
-//                         scala.Option.empty(),
-//                         remoteSubTaskId ? scala.Some.apply(remoteSubTaskId as String) : scala.Option.empty()
-//                 )))
-//                 errors.findAll { error -> error.rootCauseDetails?.contains("#SubTaskSync#receive:") }.each { error -> errorServ.resolveErrorAndRescheduleSync(error.id) }
-//             }
-//         }
     }
 }

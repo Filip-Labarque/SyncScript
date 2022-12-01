@@ -59,8 +59,19 @@ class Status {
         InjectorGetter.getInjector()
     }
 
+    /**
+     * Due to changes on Exalate's API from 5.3 to 5.4 we need to consider that IJCloudGeneralSettingsRepository might have
+     * a different classname such as IJCloudGneeralSettingsPersistence, so we will load the class dinamycally and catching an exception if Exalate is running
+     * 5.3 or lower version
+     */
     private static def getGeneralSettings() {
-        def gsp = injector.instanceOf(com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence.class)
+        def classLoader = this.getClassLoader()
+        def gsp
+        try {
+            gsp = getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsRepository"))
+        } catch(ClassNotFoundException exception) {
+            gsp = getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence"))
+        }
         def gsOpt = await(gsp.get())
         def gs = orNull(gsOpt)
         gs
@@ -702,7 +713,8 @@ class Status {
                         }
                         exaTransition
                     }
-                    def transitions = json."transitions".inject([] as List<Map<String, Object>>) { List<Map<String, Object>>result, Map<String, Object> transition ->
+                    def transitionsFiltered = json."transitions".findAll{!(it."from".empty && it."to" == "")}
+                    def transitions = transitionsFiltered.inject([] as List<Map<String, Object>>) { List<Map<String, Object>>result, Map<String, Object> transition ->
                         def ts
                         if (transition."from".empty && transition."type" == "global") {
                             def t = [
@@ -727,9 +739,10 @@ class Status {
                                                 "id"  : transition."to" as String,
                                                 "name": statusIdToName[transition."to" as String],
                                         ],
+                                        "fields": transition?.rules?.validators?.collect{it.configuration?.fields}?.flatten().findAll{it != null} ?: [],
                                         "global": false
                                 ]
-                                addValidators(transition, t)
+//                                addValidators(transition, t)
                                 t
                             }
                         }
@@ -781,33 +794,54 @@ class Status {
 
                         def fieldsUpdate = [:]
                         if(t.fields){
+
                            //TODO: This approach only check for transition custom fields but won't set system fields. Support system fields
                            def requiredCustomFields = issue.customFields.findAll{cf ->
                                t.fields.any{
-                                  it.value.schema.customId != null && it.value.schema.customId == cf.value.id
+                                  /*
+                                  We might have different format of the required fields depending if this is a first transition or any subsequent transition
+                                  This is happening because we are using 2 different REST APIs to get transition information
+                                  WARNING: there is a limitation to get required fields for the first transition as they only are detected if there is a screen for them
+                                  */
+                                  if (it instanceof String){
+                                     it == "customfield_" + cf.value.id
+                                  }else {
+                                    it.value.schema.customId != null && it.value.schema.customId == cf.value.id
+                                  }
                                }
                            }
 
                            fieldsUpdate = requiredCustomFields.collect{cf ->
-                               def cfId = "customfield_" + cf.value.id
-                               if(cf.value.value == null) return [:]
-                               //TODO: Have a better check of other types
-                               def stringV
-                               if (cf.value.value instanceof String && cf.value.type == com.exalate.api.domain.hubobject.v1_2.HubCustomFieldType.OPTION) {
-                                   stringV = cf.value.value
-                                   return [(cfId): ["value": stringV]]
-                               }
-                               if(cf.value.type == com.exalate.api.domain.hubobject.v1_2.HubCustomFieldType.NUMERIC){
-                                 stringV = cf.value.value
-                               } else if(cf.value.value instanceof com.exalate.basic.domain.hubobject.v1.BasicHubOption) {
-                                 stringV = cf.value.value.value
-                                 return [(cfId): ["value": stringV]]
-                               } else {
-                                 stringV = cf.value.value.toString()
-                               }
-                               return [(cfId): stringV]
+                                def cfId = "customfield_" + cf.value.id
+                                if(cf.value.value == null) return [:]
+                                //TODO: Have a better check of other types
+                                def stringV
+                                if (cf.value.value instanceof String && cf.value.type == com.exalate.api.domain.hubobject.v1_2.HubCustomFieldType.OPTION) {
+                                    stringV = cf.value.value
+                                    return [(cfId): ["value": stringV]]
+                                }
+                                if(cf.value.type == com.exalate.api.domain.hubobject.v1_2.HubCustomFieldType.NUMERIC){
+                                  stringV = cf.value.value
+                                } else if(cf.value.value instanceof com.exalate.basic.domain.hubobject.v1.BasicHubOption) {
+                                  stringV = cf.value.value.value
+                                  return [(cfId): ["value": stringV]]
+                                } else {
+                                  stringV = cf.value.value.toString()
+                                }
+                                return [(cfId): stringV]
 
-                           }.collectEntries()
+                            }.collectEntries()
+
+                           if(t.fields.any{
+                           if(it instanceof String){
+                              return it == "assignee"
+                           }else {
+                              it.getKey() == "assignee"
+                           }}){
+                              if(issue.assignee){
+                                fieldsUpdate = fieldsUpdate += ["assignee": ["id": issue.assignee?.key]]
+                              }
+                           }
 
                         }
                         def json = [
@@ -826,7 +860,7 @@ class Status {
                             httpClient.post("/rest/api/2/issue/"+ zissueKey.URN + "/transitions", jsonStr)
                         } catch (Exception e) {
                             throw issueLevelError2("Unable to transition issue `" + zissueKey.URN + "`, please contact Exalate Support:  \n" +
-                                    "POST " + jiraCloudUrl + "/rest/api/2/issue/" + zissueKey.URN + "\nBody: " + jsonStr + "\nError Message:" + e.message, e)
+                                    "POST " + jiraCloudUrl + "/rest/api/2/issue/" + zissueKey.URN + "/transitions\nBody: " + jsonStr + "\nError Message:" + e.message, e)
                         }
                     }
                 }
@@ -969,15 +1003,15 @@ class Status {
                     }
                 }
                 if (desiredStatusName != null && !jIssue.status.name.equalsIgnoreCase(desiredStatusName)) {
+                    //TODO: add transition validators from workflow, currently we only get field required if there is a screen for them
                     def directTrans = getDirectTransitionsViaIssue(issue.key)
-//                      throw issueLevelError("Direct trans before sorting `" + directTrans + "` for issue key "+issue.key)
                     directTrans = directTrans.sort{ a, b -> (a."global" && b."global")? 0 : a."global" ? -1 : 1 }
                     def directTransToDesiredStatus = directTrans.find { t -> desiredStatusName.equalsIgnoreCase(t?.to?.name) }
                     if (directTransToDesiredStatus != null) {
                         transition(localExIssueKey)(directTransToDesiredStatus as Map<String, Object>, null, null as Map<String, Object>)
                         def newStatusHub = new com.exalate.basic.domain.hubobject.v1.status.BasicHubStatus()
                         newStatusHub.name = desiredStatusName
-                        issue.status =newStatusHub
+                        issue.status = newStatusHub
                         return
                     }
                     if(onlyDirectTransitions){
@@ -986,11 +1020,6 @@ class Status {
                     def wfName = getWorkflowName(issue.project.id as String, issue.type.id, jIssue.status.name, desiredStatusName)
                     def wf = getWorkflow(wfName, issue.project.key, jIssue.key)
                     if (!wf.steps?.any { step -> desiredStatusName.equalsIgnoreCase(step?.name) }) {
-//                        throw issueLevelError(
-//                                "Can not find status `" + desiredStatusName + "` " +
-//                                        "in workflow `" + wf.name + ". " +
-//                                        "Please review whether `" + wf.name + "` is the correct workflow for the issue `" + jIssue.key + "`."
-//                        )
                         def onStatusFoundResult = onNoStatusFoundFn(desiredStatusName, wf, jIssue)
                         if (onStatusFoundResult == null) {
                             // don't try to sync status, since we've indicated that we don't want to change anything
@@ -1008,6 +1037,7 @@ class Status {
                     shortestPath.each { t ->
                         transition(localExIssueKey)(t as Map<String, Object>, null, null as Map<String, Object>)
                     }
+
                     def newStatusHub = new com.exalate.basic.domain.hubobject.v1.status.BasicHubStatus()
                     newStatusHub.name = desiredStatusName
                     issue.status =newStatusHub

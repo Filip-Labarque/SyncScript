@@ -1,4 +1,3 @@
-import services.replication.PreparedHttpClient
 
 class AgileSync {
     //ERRORS
@@ -77,8 +76,20 @@ class AgileSync {
     static play.api.inject.Injector getInjector() {
         InjectorGetter.getInjector()
     }
+
+    /**
+     * Due to changes on Exalate's API from 5.3 to 5.4 we need to consider that IJCloudGeneralSettingsRepository might have
+     * a different classname such as IJCloudGneeralSettingsPersistence, so we will load the class dinamycally and catching an exception if Exalate is running
+     * 5.3 or lower version
+     */
     static def getGeneralSettings() {
-        def gsp = InjectorGetter.getInjector().instanceOf(com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence.class)
+        def classLoader = this.getClassLoader()
+        def gsp
+        try {
+            gsp = getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsRepository"))
+        } catch(ClassNotFoundException exception) {
+            gsp = getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence"))
+        }
         def gsOpt = await(gsp.get())
         def gs = orNull(gsOpt)
         gs
@@ -92,7 +103,7 @@ class AgileSync {
     }
 
     // JIRA API
-    static List<Map<String, Object>> getFieldsJson(PreparedHttpClient httpClient) {
+    static List<Map<String, Object>> getFieldsJson(httpClient) {
         //"com.pyxis.greenhopper.jira:gh-epic-link"
 
         def fieldsResponse
@@ -119,7 +130,7 @@ class AgileSync {
         }
         fieldsJson as List<Map<String, Object>>
     }
-    static def searchFn(PreparedHttpClient httpClient) { return { String jql ->
+    static def searchFn(httpClient) { return { String jql ->
         final def gs = generalSettings
         //noinspection GroovyAssignabilityCheck
         def foundIssues = paginate(
@@ -207,7 +218,7 @@ class AgileSync {
     } }
 
     // SEND
-    static def sendSprints(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.replication.PreparedHttpClient httpClient) {
+    static def sendSprints(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, httpClient) {
         final def iso8601DateFormat = new com.fasterxml.jackson.databind.util.ISO8601DateFormat()
         def parseDateIso8601 = { String dateStr ->
             iso8601DateFormat.parse(dateStr)
@@ -282,7 +293,7 @@ class AgileSync {
             }
             resultMap
         }
-        def getIssuesInSprint = { sprintId ->
+        def getIssuesInSprint = { Long sprintId ->
             def sprintClauseNames = sprintCfJson.clauseNames as List<String>
             def clauseName = sprintClauseNames[0]
             final def jql = clauseName + " = " + sprintId
@@ -303,7 +314,7 @@ class AgileSync {
             replica.customKeys."sprintContext" = getSprintContext((sprintCfValue as List<com.exalate.basic.domain.hubobject.v1.BasicHubSprint>).collect { s-> s.id })
         }
     }
-    static def sendRank(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.replication.PreparedHttpClient httpClient) {
+    static def sendRank(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  httpClient) {
         final def issueKey = new com.exalate.basic.domain.BasicIssueKey(issue.id as Long, issue.key)
 
         final def gs = generalSettings
@@ -485,7 +496,7 @@ class AgileSync {
             replica.customKeys."rankContext" = getRankContext()
         }
     }
-    static def sendEpic(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.replication.PreparedHttpClient httpClient) {
+    static def sendEpic(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  httpClient) {
         def issueKey = new com.exalate.basic.domain.BasicIssueKey(issue.id as Long, issue.key)
         def issueLevelError = { String msg ->
             new com.exalate.api.exception.IssueTrackerException(msg)
@@ -608,10 +619,10 @@ class AgileSync {
     }
 
     // RECEIVE
-    static def receiveEpicName(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.jcloud.hubobjects.NodeHelper nodeHelper, services.replication.PreparedHttpClient httpClient) {
+    static def receiveEpicName(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  nodeHelper,  httpClient) {
         receiveEpicBeforeCreation(replica, issue, nodeHelper, httpClient)
     }
-    static def receiveEpicBeforeCreation(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.jcloud.hubobjects.NodeHelper nodeHelper, services.replication.PreparedHttpClient httpClient) {
+    static def receiveEpicBeforeCreation(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  nodeHelper,  httpClient) {
         def issueLevelError = { String msg ->
             new com.exalate.api.exception.IssueTrackerException(msg)
         }
@@ -651,10 +662,10 @@ class AgileSync {
             }
         }
     }
-    static def receiveEpicLinks(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.jcloud.hubobjects.NodeHelper nodeHelper, services.replication.PreparedHttpClient httpClient) {
+    static def receiveEpicLinks(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  nodeHelper,  httpClient) {
         receiveEpicAfterCreation(replica, issue, nodeHelper, httpClient)
     }
-    static def receiveEpicAfterCreation(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.jcloud.hubobjects.NodeHelper nodeHelper, services.replication.PreparedHttpClient httpClient) {
+    static def receiveEpicAfterCreation(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  nodeHelper,  httpClient) {
         def issueLevelError = { String msg ->
             new com.exalate.api.exception.IssueTrackerException(msg)
         }
@@ -742,7 +753,7 @@ class AgileSync {
             issue.customFields[epicLinkCfIdStr].value = null
         }
     }
-    static def receiveRank(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.jcloud.hubobjects.NodeHelper nodeHelper, services.replication.PreparedHttpClient httpClient) {
+    static def receiveRank(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  nodeHelper,  httpClient) {
         final def jIssue = issue
         if (issue.id == null) {
             throw new com.exalate.api.exception.IssueTrackerException(""" It seems, that the issue has not been created yet. Please change your create processor to create the issue and populate the `issue.id` property before using the `AgileSync.receiveRank(...)` """.toString())
@@ -833,10 +844,10 @@ class AgileSync {
         // rank all issues on the board
         rankAll(replica.customKeys."rankContext" as Map<String, Object>)
     }
-    static def receiveSprints(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.jcloud.hubobjects.NodeHelper nodeHelper, services.replication.PreparedHttpClient httpClient) {
+    static def receiveSprints(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  nodeHelper,  httpClient) {
         receiveSprints(defaultOnNoBoardFound(), replica, issue, nodeHelper, httpClient)
     }
-    static def receiveSprints(Closure<Object> onNoBoardFound, com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, services.jcloud.hubobjects.NodeHelper nodeHelper, services.replication.PreparedHttpClient httpClient) {
+    static def receiveSprints(Closure<Object> onNoBoardFound, com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica, com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,  nodeHelper,  httpClient) {
         def lookupSprintByName = true
 
         if (issue.id == null) {

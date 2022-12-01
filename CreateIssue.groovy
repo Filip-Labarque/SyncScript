@@ -3,6 +3,20 @@ import com.exalate.api.domain.twintrace.INonPersistentTrace
 import com.exalate.basic.domain.BasicIssueKey
 
 class CreateIssue {
+
+    /**
+     * Due to changes on Exalate's API from 5.3 to 5.4 we need to consider that ITrackerHubObjectService might be on
+     * different packages, so we will load the class dinamycally and catching an exception if Exalate is running
+     * 5.3 or lower version
+     */
+    static getTrackerHubObjectService() {
+        def classLoader = this.getClassLoader()
+        try {
+            return InjectorGetter.getInjector().instanceOf(classLoader.loadClass("com.exalate.generic.services.api.ITrackerHubObjectService"))
+        } catch(ClassNotFoundException exception) {
+            return InjectorGetter.getInjector().instanceOf(classLoader.loadClass("com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService"))
+        }
+    }
     static create(com.exalate.basic.domain.hubobject.v1.BasicHubIssue replica,
                   com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue,
                   com.exalate.api.domain.connection.IConnection connection,
@@ -50,7 +64,7 @@ class CreateIssue {
             def await = { scala.concurrent.Future<?> f -> scala.concurrent.Await$.MODULE$.result(f, scala.concurrent.duration.Duration$.MODULE$.Inf()) }
 
             def orNull = { scala.Option<?> opt -> opt.isDefined() ? opt.get() : null }
-            final def hoh = InjectorGetter.getInjector().instanceOf(com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService.class)
+            final def hoh = getTrackerHubObjectService()
             def existingExIssueKey = orNull(await(hoh.getLocalKeyById(issue.id, connection))) as com.exalate.basic.domain.BasicIssueKey
             if(existingExIssueKey != null){
                 issue = fixStatusAndProjectAndType(issue, existingExIssueKey, connection)
@@ -85,8 +99,8 @@ class CreateIssue {
 
     private static com.exalate.basic.domain.hubobject.v1.BasicHubIssue fixStatusAndProjectAndType(com.exalate.basic.domain.hubobject.v1.BasicHubIssue issue, BasicIssueKey exIssueKey, IConnection connection) {
 
-        def hos = InjectorGetter.getInjector().instanceOf(com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService.class)
-        def exIssueOptFuture = hos.getHubPayloadFromTracker(exIssueKey, connection)
+        def hos = getTrackerHubObjectService()
+        def exIssueOptFuture = hos.getHubPayloadFromTracker(exIssueKey)
         def await = { scala.concurrent.Future<?> f -> scala.concurrent.Await$.MODULE$.result(f, scala.concurrent.duration.Duration$.MODULE$.Inf()) }
         def orNull = { scala.Option<?> opt -> opt.isDefined() ? opt.get() : null }
         def exIssueOpt = await(exIssueOptFuture)
@@ -105,8 +119,19 @@ class CreateIssue {
         def await = { scala.concurrent.Future<?> f -> scala.concurrent.Await$.MODULE$.result(f, scala.concurrent.duration.Duration$.MODULE$.Inf()) }
         def orNull = { scala.Option<?> opt -> opt.isDefined() ? opt.get() : null }
         def none = { scala.Option$.MODULE$.<?> empty() }
+        /**
+         * Due to changes on Exalate's API from 5.3 to 5.4 we need to consider that IJCloudGeneralSettingsRepository might have
+         * a different classname such as IJCloudGneeralSettingsPersistence, so we will load the class dinamycally and catching an exception if Exalate is running
+         * 5.3 or lower version
+         */
         def getGeneralSettings = {
-            def gsp = InjectorGetter.getInjector().instanceOf(com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence.class)
+            def classLoader = this.getClassLoader()
+            def gsp
+            try {
+                gsp = InjectorGetter.getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsRepository"))
+            } catch(ClassNotFoundException exception) {
+                gsp = InjectorGetter.getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence"))
+            }
             def gsOpt = await(gsp.get())
             def gs = orNull(gsOpt)
             gs
@@ -191,7 +216,7 @@ class CreateIssue {
         def pair = { l, r -> scala.Tuple2$.MODULE$.<?, ?> apply(l, r) }
 
         final
-        def hoh = InjectorGetter.getInjector().instanceOf(com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService.class)
+        def hoh = getTrackerHubObjectService()
         final
         def ps = InjectorGetter.getInjector().instanceOf(com.exalate.api.hubobject.v1.IHubIssueProcessorPreparationService.class)
 
@@ -205,7 +230,7 @@ class CreateIssue {
         def preparedIssue = ps.prepareLocalHubIssueViaPrevious(issueBeforeScript, issue, javaFakeTraces)
         //@Nonnull com.exalate.api.domain.IIssueKey issueKey, @Nonnull IHubIssueReplica hubIssueAfterScripts, @Nullable String proxyUser, @Nonnull IHubIssueReplica hubIssueBeforeScripts, @Nonnull Map<com.exalate.api.domain.twintrace.TraceType, List<com.exalate.api.domain.twintrace.ITrace>> traces, @Nonnull List<IBlobMetadata> blobMetadataList, IRelation relation
         def blobMetadataSeq = blobMetadataList
-        def resultTraces = await(hoh.updateIssue(issueBeforeScript, preparedIssue, syncRequest, localExIssueKey, blobMetadataSeq, fakeTraces))
+        def resultTraces = await(hoh.updateEntity(issueBeforeScript, preparedIssue, syncRequest, localExIssueKey, blobMetadataSeq, fakeTraces))
         traces.clear()
         traces.addAll(scala.collection.JavaConversions.bufferAsJavaList(resultTraces.toBuffer()))
         return pair(localExIssueKey, scala.collection.JavaConversions.asScalaBuffer(traces))
@@ -227,7 +252,7 @@ class CreateIssue {
         def await = { scala.concurrent.Future<?> f -> scala.concurrent.Await$.MODULE$.result(f, scala.concurrent.duration.Duration$.MODULE$.Inf()) }
         def orNull = { scala.Option<?> opt -> opt.isDefined() ? opt.get() : null }
 
-        final def hoh = InjectorGetter.getInjector().instanceOf(com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService.class)
+        final def hoh = getTrackerHubObjectService()
 
         final def _blobMetadataList = syncRequest.blobMetadataList
         def _traces = syncRequest.traces.collect { itrace -> new com.exalate.basic.domain.BasicNonPersistentTrace().from(itrace) }
@@ -278,7 +303,7 @@ class CreateIssue {
                         )
                     }
                 } else {
-                    def jIssueAndTraces = await(hoh.createIssue(issueBeforeScript, issue, relation, scala.collection.JavaConversions.asScalaBuffer(_blobMetadataList)))
+                    def jIssueAndTraces = await(hoh.createEntity(issueBeforeScript, issue, syncRequest, scala.collection.JavaConversions.asScalaBuffer(_blobMetadataList)))
                     def anExIssueKey = jIssueAndTraces._1() as com.exalate.basic.domain.BasicIssueKey
                     if (anExIssueKey.URN != issue.key) {
                         if (!reuseIssue) {
@@ -304,7 +329,7 @@ class CreateIssue {
                     _traces.addAll(tsInternal)
                 }
             } else {
-                def jIssueAndTraces = await(hoh.createIssue(issueBeforeScript, issue, syncRequest, scala.collection.JavaConversions.asScalaBuffer(_blobMetadataList)))
+                def jIssueAndTraces = await(hoh.createEntity(issueBeforeScript, issue, syncRequest, scala.collection.JavaConversions.asScalaBuffer(_blobMetadataList)))
                 _localExIssueKey = jIssueAndTraces._1() as com.exalate.basic.domain.BasicIssueKey
                 def tsInternal = scala.collection.JavaConversions.bufferAsJavaList(jIssueAndTraces._2().toBuffer()) as List<com.exalate.basic.domain.BasicNonPersistentTrace> ?: []
                 _traces.clear()

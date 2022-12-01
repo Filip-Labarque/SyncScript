@@ -11,8 +11,19 @@ class JiraClient {
     private static play.api.inject.Injector getInjector() {
         InjectorGetter.getInjector()
     }
+    /**
+     * Due to changes on Exalate's API from 5.3 to 5.4 we need to consider that IJCloudGeneralSettingsRepository might have
+     * a different classname such as IJCloudGneeralSettingsPersistence, so we will load the class dinamycally and catching an exception if Exalate is running
+     * 5.3 or lower version
+     */
     private static def getGeneralSettings() {
-        def gsp = InjectorGetter.getInjector().instanceOf(com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence.class)
+        def classLoader = this.getClassLoader()
+        def gsp
+        try {
+            gsp = getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsRepository"))
+        } catch(ClassNotFoundException exception) {
+            gsp = getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence"))
+        }
         def gsOpt = await(gsp.get())
         def gs = orNull(gsOpt)
         gs
@@ -134,7 +145,7 @@ class JiraClient {
             }
 
             if (!allQueryParams.isEmpty()) {
-                def scalaQueryParams = scala.collection.JavaConversions.asScalaBuffer(queryParams.entrySet().inject([] as List<scala.Tuple2<String, String>>) { List<scala.Tuple2<String, String>> result, kv ->
+                def scalaQueryParams = scala.collection.JavaConversions.asScalaBuffer(allQueryParams.entrySet().inject([] as List<scala.Tuple2<String, String>>) { List<scala.Tuple2<String, String>> result, kv ->
                     kv.value.each { v -> result.add(pair(kv.key, v) as scala.Tuple2<String, String>) }
                     result
                 })
@@ -142,7 +153,7 @@ class JiraClient {
             }
 
             if (body != null) {
-                def writable = play.api.http.Writeable$.MODULE$.wString(play.api.mvc.Codec.utf_8())
+                def writable = play.api.libs.ws.WSBodyWritables$.MODULE$.writeableOf_String()
                 request = request.withBody(body, writable)
             }
 

@@ -41,8 +41,19 @@ class ComponentSync {
     static play.api.inject.Injector getInjector() {
         InjectorGetter.getInjector()
     }
+    /**
+     * Due to changes on Exalate's API from 5.3 to 5.4 we need to consider that IJCloudGeneralSettingsRepository might have
+     * a different classname such as IJCloudGneeralSettingsPersistence, so we will load the class dinamycally and catching an exception if Exalate is running
+     * 5.3 or lower version
+     */
     static def getGeneralSettings() {
-        def gsp = InjectorGetter.getInjector().instanceOf(com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence.class)
+        def classLoader = this.getClassLoader()
+        def gsp
+        try {
+            gsp = getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsRepository"))
+        } catch(ClassNotFoundException exception) {
+            gsp = getInjector().instanceOf(classLoader.loadClass("com.exalate.api.persistence.issuetracker.jcloud.IJCloudGeneralSettingsPersistence"))
+        }
         def gsOpt = await(gsp.get())
         def gs = orNull(gsOpt)
         gs
@@ -159,7 +170,19 @@ class ComponentSync {
         def injector = InjectorGetter.getInjector()
         def sdp = injector.instanceOf(this.getClassLoader().loadClass("com.exalate.api.persistence.scriptdata.IJScriptDataPersistence"))
         def ttRepo = injector.instanceOf(com.exalate.api.persistence.twintrace.ITwinTraceRepository.class)
-        def hos = injector.instanceOf(com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService.class)
+
+        /**
+         * Due to changes on Exalate's API from 5.3 to 5.4 we need to consider that ITrackerHubObjectService might be on
+         * different packages, so we will load the class dinamycally and catching an exception if Exalate is running
+         * 5.3 or lower version
+         */
+        def hos
+        def classLoader = this.getClassLoader
+        try {
+            hos = InjectorGetter.getInjector.instanceOf(classLoader.loadClass("com.exalate.generic.services.api.ITrackerHubObjectService"))
+        } catch(ClassNotFoundException exception) {
+            hos = InjectorGetter.getInjector.instanceOf(classLoader.loadClass("com.exalate.replication.services.api.issuetracker.hubobject.ITrackerHubObjectService"))
+        }
         def ess = injector.instanceOf(com.exalate.replication.services.api.replication.IEventSchedulerService.class)
 
         paginate(
@@ -214,7 +237,7 @@ class ComponentSync {
                                                         def exIssueKey = new com.exalate.basic.domain.BasicIssueKey(issueWithComponent.id as String, issueWithComponent.key as String)
                                                         def tts = ttRepo.findByLocalIssueKey(exIssueKey)
                                                         tts.each { tt ->
-                                                            def hubIssue = orNull(await(hos.getHubPayloadFromTracker(exIssueKey, tt.connection)))
+                                                            def hubIssue = orNull(await(hos.getHubPayloadFromTracker(exIssueKey)))
                                                             ess.schedulePairOrSyncEvent(tt.connection, exIssueKey, hubIssue, scala.Some$.MODULE$.apply(tt))
                                                         }
                                                     }
