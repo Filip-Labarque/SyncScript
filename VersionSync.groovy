@@ -78,7 +78,7 @@ class VersionSync {
                         // Log sucessful update of Verion
                     }
 
-                    def getVersion = { Long versionId ->
+                    def getVersion = { versionId ->
                         js.parseText(wc.http(
                                 "GET",
                                 "/rest/api/2/version/$versionId".toString(),
