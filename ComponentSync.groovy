@@ -590,7 +590,7 @@ class ComponentSync {
                         httpClient.put(  "/rest/api/2/component/${localJiraC.id}".toString(), putBody)
                     }
 
-                    def getComponent = { Long componentId ->
+                    def getComponent = { componentId ->
                         js.parseText(wc.http(
                                 "GET",
                                 "/rest/api/2/component/$componentId".toString(),
