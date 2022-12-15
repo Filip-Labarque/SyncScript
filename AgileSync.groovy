@@ -590,7 +590,7 @@ class AgileSync {
 
         if (epicLinkCfJson != null && issue.customFields[epicLinkCfJson?.schema?.customId as String].value != null) {
             final def thisIssueJson = getIssueByIdOrKey(issueKey.id) 
-            def epicLinkKey = (thisIssueJson.fields[epicLinkCfJson.key as String] ?: thisIssueJson.fields.parent?.id as String
+            def epicLinkKey = (thisIssueJson.fields[epicLinkCfJson.key as String] ?: thisIssueJson.fields.parent?.id) as String
                 def errorMsg="issue custom field:"+issue.customFields[epicLinkCfJson?.schema?.customId as String].value +
                     " and epic custom field from json:"+thisIssueJson.fields[epicLinkCfJson.key as String] + 
                     " and parent link:"+thisIssueJson.fields.parent+" and finally the id:"+thisIssueJson.fields.parent?.id
