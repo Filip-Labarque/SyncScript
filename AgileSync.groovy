@@ -589,11 +589,11 @@ class AgileSync {
 
 
         if (epicLinkCfJson != null && issue.customFields[epicLinkCfJson?.schema?.customId as String].value != null) {
-            final def thisIssueJson = getIssueByIdOrKey(issueKey.id)
-            def epicLinkKey = (thisIssueJson.fields[epicLinkCfJson.key as String] ?: thisIssueJson.parent?.id) as String
+            final def thisIssueJson = getIssueByIdOrKey(issueKey.id) 
+            def epicLinkKey = (thisIssueJson.fields[epicLinkCfJson.key as String] ?: thisIssueJson.fields.parent?.id) as String
                 def errorMsg="issue custom field:"+issue.customFields[epicLinkCfJson?.schema?.customId as String].value +
                     " and epic custom field from json:"+thisIssueJson.fields[epicLinkCfJson.key as String] + 
-                    " and parent link:"+thisIssueJson.parent+" and finally the id:"+thisIssueJson.parent?.id
+                    " and parent link:"+thisIssueJson.fields.parent+" and finally the id:"+thisIssueJson.fields.parent?.id
             if (epicLinkKey == null) {
                 throw issueLevelError("Can not find the epic link ("+ epicLinkCfJson.key +") for issue `"+ issueKey.URN +"` ("+ issueKey.id +"), please contact Exalate Support: "+ thisIssueJson + " additional info:"+errorMsg)
                 
