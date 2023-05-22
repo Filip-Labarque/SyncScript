@@ -157,6 +157,7 @@ class ChangeProcessor {
         //AgileSync.receiveSprints(AgileSync.skipOnNoBoardFound(), replica, issue, nodeHelper, httpClient)
 
         issue.attachments = attachmentHelper.mergeAttachments(issue, replica)
+        replica.removedComments = []
         issue.comments = commentHelper.mergeComments(issue, replica)
 
         IssueLinkSync.receive(replica, issue, httpClient, nodeHelper)
